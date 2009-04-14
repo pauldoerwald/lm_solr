@@ -28,39 +28,7 @@ Loading development environment (Rails 2.1.2)
 => #<Solr::Response::Standard:0x1ff7ad4 @raw_response="{'responseHeader'=>{'status'=>0,'QTime'=>1,'params'=>{'wt'=>'ruby','q'=>'hello','fl'=>'*,score','qt'=>'standard'}},'response'=>{'numFound'=>0,'start'=>0,'maxScore'=>0.0,'docs'=>[]}}", @data={"response"=>{"maxScore"=>0.0, "docs"=>[], "start"=>0, "numFound"=>0}, "responseHeader"=>{"status"=>0, "QTime"=>1, "params"=>{"qt"=>"standard", "fl"=>"*,score", "q"=>"hello", "wt"=>"ruby"}}}, @response={"maxScore"=>0.0, "docs"=>[], "start"=>0, "numFound"=>0}, @header={"status"=>0, "QTime"=>1, "params"=>{"qt"=>"standard", "fl"=>"*,score", "q"=>"hello", "wt"=>"ruby"}}>
 
 === Hook up your models
-Basically you're going to need to configure the various fields:
-
-  @@solr_mapping = {
-    :id => :id,
-    :name_t => :name,
-    :alliance_region_facet => Proc.new {|data| data.metadata['alliance_region']},
-    :state_facet => Proc.new {|data| data.metadata['state']},
-    :author_facet => Proc.new {|data| data.metadata['author']},
-    :year_facet => Proc.new {|data| data.metadata['year']},
-    :publication_type_facet => Proc.new {|data| data.metadata['publication_type']},
-    :subject_category_facet => Proc.new {|data| data.subject_categories.map {|x| x.name}.join(', ')},
-    :case_name_facet => Proc.new {|data| data.metadata['case_name']},
-    :common_name_facet => Proc.new {|data| data.metadata['common_name']},
-    :text => Proc.new {|data| data.metadata.to_s},
-    :all_search_s => 'all'
-  }
-
-You may want an ordered facet list:
-
-  FACETS = %w{alliance_region state author year publication_type subject_category case_name common_name}
-  FACETS_FACET = FACETS.map {|x| "#{x}_facet"}  # Solr likes _facet at the end of facet fields
-
-Write a clever routine that will allow your objects to be updated:
-
-  def self.reindex
-    # First we need to delete everything currently in the database; below should always work, because it returns everything. It doesn't return an error when there's an empty Solr database, so we're good to go.
-    @solr = Solr::Connection.new(SOLR_URL, :autocommit => :on)
-    @solr.delete_by_query 'all_search_s:all'
-    
-    # Now index the database
-    indexer = Solr::Indexer.new(Document.find(:all), @@solr_mapping, :solr_url => SOLR_URL)
-    indexer.index
-  end
+I need to re-do the instructions here..
 
 Make sure that the solr index is updated appropriately:
 
