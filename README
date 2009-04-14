@@ -1,0 +1,207 @@
+= Liquid Media's Solr/Rails Integration Library
+
+== Setup
+
+=== Install all your files
+
+1. Unpack this directory somewhere useful; it's your SOLR_HOME.
+
+2. Create a directory to hold the data; it's your SOLR_DATA. Wise people will put SOLR_DATA somewhere other than underneath SOLR_HOME or underneath RAILS_ROOT.
+
+3. Put solr.yml and solr.rb in your RAILS_ROOT/config directory. Sample files appear below. Be sure to adjust solr.yml appropriately to reflect your file layout.
+
+4. Put (script/)solr in your RAILS_ROOT/script directory.
+
+These instructions are not great. I'm still working on design. To get this thing running, talk to Paul.
+
+
+=== Get things going
+From inside RAILS_ROOT, run the following. You should get more-or-less the same thing:
+
+trudeau:/web/wego/wegowego paul$ script/console
+Loading development environment (Rails 2.1.2)
+>> @solr.ping
+=> false
+>> @solr.inspect
+=> "#<Solr::Connection:0x23f92a4 @connection=#<Net::HTTP localhost:8982 open=false>, @autocommit=false, @url=#<URI::HTTP:0x11fc89e URL:http://localhost:8982/solr>>"
+>> @solr.query('hello')
+=> #<Solr::Response::Standard:0x1ff7ad4 @raw_response="{'responseHeader'=>{'status'=>0,'QTime'=>1,'params'=>{'wt'=>'ruby','q'=>'hello','fl'=>'*,score','qt'=>'standard'}},'response'=>{'numFound'=>0,'start'=>0,'maxScore'=>0.0,'docs'=>[]}}", @data={"response"=>{"maxScore"=>0.0, "docs"=>[], "start"=>0, "numFound"=>0}, "responseHeader"=>{"status"=>0, "QTime"=>1, "params"=>{"qt"=>"standard", "fl"=>"*,score", "q"=>"hello", "wt"=>"ruby"}}}, @response={"maxScore"=>0.0, "docs"=>[], "start"=>0, "numFound"=>0}, @header={"status"=>0, "QTime"=>1, "params"=>{"qt"=>"standard", "fl"=>"*,score", "q"=>"hello", "wt"=>"ruby"}}>
+
+=== Hook up your models
+Basically you're going to need to configure the various fields:
+
+  @@solr_mapping = {
+    :id => :id,
+    :name_t => :name,
+    :alliance_region_facet => Proc.new {|data| data.metadata['alliance_region']},
+    :state_facet => Proc.new {|data| data.metadata['state']},
+    :author_facet => Proc.new {|data| data.metadata['author']},
+    :year_facet => Proc.new {|data| data.metadata['year']},
+    :publication_type_facet => Proc.new {|data| data.metadata['publication_type']},
+    :subject_category_facet => Proc.new {|data| data.subject_categories.map {|x| x.name}.join(', ')},
+    :case_name_facet => Proc.new {|data| data.metadata['case_name']},
+    :common_name_facet => Proc.new {|data| data.metadata['common_name']},
+    :text => Proc.new {|data| data.metadata.to_s},
+    :all_search_s => 'all'
+  }
+
+You may want an ordered facet list:
+
+  FACETS = %w{alliance_region state author year publication_type subject_category case_name common_name}
+  FACETS_FACET = FACETS.map {|x| "#{x}_facet"}  # Solr likes _facet at the end of facet fields
+
+Write a clever routine that will allow your objects to be updated:
+
+  def self.reindex
+    # First we need to delete everything currently in the database; below should always work, because it returns everything. It doesn't return an error when there's an empty Solr database, so we're good to go.
+    @solr = Solr::Connection.new(SOLR_URL, :autocommit => :on)
+    @solr.delete_by_query 'all_search_s:all'
+    
+    # Now index the database
+    indexer = Solr::Indexer.new(Document.find(:all), @@solr_mapping, :solr_url => SOLR_URL)
+    indexer.index
+  end
+
+Make sure that the solr index is updated appropriately:
+
+  after_save :update_solr
+  after_destroy :destroy_solr
+
+  def update_solr
+    @solr = Solr::Connection.new(SOLR_URL, :autocommit => :on)
+    # this is a really bad duplication of @@solr_mapping, but it's all on the road to understanding the problem and possibly writing solr-ar
+    @solr.update(
+      :id => self.id,
+      :name_t => self.name,
+      :alliance_region_facet => self.metadata['alliance_region'],
+      :state_facet => self.metadata['state'],
+      :author_facet => self.metadata['author'],
+      :year_facet => self.metadata['year'],
+      :publication_type_facet => self.metadata['publication_type'],
+      :subject_category_facet => self.subject_categories.map {|x| x.name}.join(', '),
+      :case_name_facet => self.metadata['case_name'],
+      :common_name_facet => self.metadata['common_name'],
+      :text => self.metadata.to_s,
+      :all_search_s => 'all'
+    )
+  end
+  
+  def destroy_solr
+    @solr = Solr::Connection.new(SOLR_URL, :autocommit => :on)
+    @solr.delete(self.id)
+  end
+
+
+
+== Solr.rb
+require 'solr'
+
+begin
+  if File.exists?(RAILS_ROOT+'/config/solr.yml')
+    config = YAML::load_file(RAILS_ROOT+'/config/solr.yml')
+    SOLR_HOST = config[RAILS_ENV]['host']
+    SOLR_PORT = config[RAILS_ENV]['port']
+    SOLR_DATA_PATH = config[RAILS_ENV]['data_path']
+    SOLR_PATH = config[RAILS_ENV]['solr_path']
+    SOLR_JAR_NAME = config[RAILS_ENV]['jar_name']
+    SOLR_URL = "http://#{SOLR_HOST}:#{SOLR_PORT}/solr"
+  end
+  @solr = Solr::Connection.new(SOLR_URL)
+  @solr.ping
+rescue 
+  raise "Couldn't connect to the Solr server at #{SOLR_URL}. #{$!}"
+  return false
+end
+
+
+
+
+== solr.yml
+# Config file for Liquid Media Solr-Ruby integration
+
+development:
+  host: localhost
+  port: 8982
+  data_path: "/web/lta/solr-data/development"
+  solr_path: "/web/lta/solr-clearinghouse"
+  jar_name: "clearinghouse.jar"
+
+test:
+  host: localhost
+  port: 8981
+  data_path: "/web/lta/solr-data/test"
+  solr_path: "/web/lta/solr-clearinghouse"
+  jar_name: "clearinghouse.jar"
+
+production:
+  host: localhost
+  port: 8984
+  data_path: "/web/lta/solr-data/production"
+  solr_path: "/web/lta/solr-clearinghouse"
+  jar_name: "clearinghouse.jar"
+
+== script/solr
+#!/usr/bin/env ruby
+require File.dirname(__FILE__) + '/../config/boot'
+require 'yaml'
+require 'net/http'
+
+begin
+  config = YAML::load_file(RAILS_ROOT+'/config/solr.yml')
+rescue
+  raise "Can't load solr.yml in #{RAILS_ROOT}/config"
+end
+
+SOLR_HOST = config[RAILS_ENV]['host']
+SOLR_PORT = config[RAILS_ENV]['port']
+SOLR_DATA_PATH = config[RAILS_ENV]['data_path']
+SOLR_PATH = config[RAILS_ENV]['solr_path']
+SOLR_JAR_NAME = config[RAILS_ENV]['jar_name']
+SOLR_URL = "http://#{SOLR_HOST}:#{SOLR_PORT}/solr"
+
+#puts "HOST: #{SOLR_HOST}; PORT: #{SOLR_PORT}; DATA_PATH: #{SOLR_DATA_PATH}; JAR_NAME: #{SOLR_JAR_NAME}"
+#puts "SOLR_URL: #{SOLR_URL}"
+
+case ARGV[0]
+when 'start'
+  begin
+    n = Net::HTTP.new(SOLR_HOST, SOLR_PORT)
+    n.request_head('/').value 
+    
+  rescue Net::HTTPServerException #responding
+    puts "Port #{SOLR_PORT} in use" and return
+    
+  rescue Errno::ECONNREFUSED #not responding
+    Dir.chdir(SOLR_PATH) do
+      pid = fork do
+        #STDERR.close
+        exec "nohup java -DSTOP.PORT=#{SOLR_PORT-20} -DSTOP.KEY=ftasolrstop -Dsolr.data.dir=#{SOLR_DATA_PATH} -Djetty.port=#{SOLR_PORT} -jar #{SOLR_JAR_NAME} > #{RAILS_ROOT}/log/solr.#{RAILS_ENV}.log 2> #{RAILS_ROOT}/log/solr.#{RAILS_ENV}.err"
+      end
+      sleep(5)
+      File.open("#{RAILS_ROOT}/tmp/pids/solr-#{ENV['RAILS_ENV']}.pid", "w"){ |f| f << pid}
+      puts "Solr started successfully on #{SOLR_PORT}, pid: #{pid}."
+    end
+  end
+when 'stop'
+  Dir.chdir(SOLR_PATH) do
+    file_path = "#{RAILS_ROOT}/tmp/pids/solr-#{ENV['RAILS_ENV']}.pid"
+    if File.exists?(file_path)
+      # This used to happen:
+      # File.open(file_path, "r") do |f| 
+      #   pid = f.readline
+      #   Process.kill('TERM', pid.to_i)
+      # end
+      # But now we use Java to stop the Solr process
+      fork do
+        exec "/usr/bin/java -DSTOP.PORT=#{SOLR_PORT-20} -DSTOP.KEY=ftasolrstop -jar #{SOLR_JAR_NAME} --stop"
+      end
+      File.unlink(file_path)
+      puts "Solr shutdown successfully."
+    else
+      puts "Solr is not running.  I haven't done anything."
+    end
+  end
+else
+  puts "Usage: script/solr <start|stop>"
+end
+
