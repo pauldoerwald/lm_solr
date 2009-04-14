@@ -28,7 +28,7 @@ Loading development environment (Rails 2.1.2)
 => #<Solr::Response::Standard:0x1ff7ad4 @raw_response="{'responseHeader'=>{'status'=>0,'QTime'=>1,'params'=>{'wt'=>'ruby','q'=>'hello','fl'=>'*,score','qt'=>'standard'}},'response'=>{'numFound'=>0,'start'=>0,'maxScore'=>0.0,'docs'=>[]}}", @data={"response"=>{"maxScore"=>0.0, "docs"=>[], "start"=>0, "numFound"=>0}, "responseHeader"=>{"status"=>0, "QTime"=>1, "params"=>{"qt"=>"standard", "fl"=>"*,score", "q"=>"hello", "wt"=>"ruby"}}}, @response={"maxScore"=>0.0, "docs"=>[], "start"=>0, "numFound"=>0}, @header={"status"=>0, "QTime"=>1, "params"=>{"qt"=>"standard", "fl"=>"*,score", "q"=>"hello", "wt"=>"ruby"}}>
 
 === Hook up your models
-I need to re-do the instructions here..
+I need to re-do the instructions here.. Yes, I really do.
 
 Make sure that the solr index is updated appropriately:
 
